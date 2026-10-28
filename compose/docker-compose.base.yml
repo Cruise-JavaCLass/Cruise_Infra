@@ -1,7 +1,10 @@
 services:
+  # ----------------------------------------------------------------------------
+  # PostgreSQL Primary Database Engine
+  # ----------------------------------------------------------------------------
   postgres:
     image: postgres:18-alpine
-    container_name: cruise-postgres
+    container_name: cruise-db-primary
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-cruise_db}
@@ -17,9 +20,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     networks:
       - cruise-network
 
+  # ----------------------------------------------------------------------------
+  # Redis In-Memory Cache & Distributed State Store
+  # ----------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
     container_name: cruise-redis
@@ -34,6 +41,8 @@ services:
       - ${REDIS_MAXMEMORY:-256mb}
       - --maxmemory-policy
       - ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
+      - --appendonly
+      - "yes"
     ports:
       - "${REDIS_HOST_BIND:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
     volumes:
@@ -43,6 +52,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 5s
     networks:
       - cruise-network
 
@@ -54,5 +64,5 @@ volumes:
 
 networks:
   cruise-network:
-    name: cruise-network
+    name: cruise-fleet-network
     driver: bridge
