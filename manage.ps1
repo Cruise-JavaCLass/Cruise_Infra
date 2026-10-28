@@ -16,6 +16,7 @@ param (
 )
 
 $BaseCompose = "compose/docker-compose.base.yml"
+$EnvFile = ".env"
 
 function Show-Help {
     Write-Host "==========================================================" -ForegroundColor Cyan
@@ -35,34 +36,46 @@ function Show-Help {
 
 switch ($Command) {
     "init" {
-        if (-not (Test-Path ".env")) {
-            Copy-Item ".env.example" ".env"
-            Write-Host "[OK] Created .env from .env.example" -ForegroundColor Green
+        if (-not (Test-Path $EnvFile)) {
+            try {
+                Copy-Item ".env.example" $EnvFile -ErrorAction Stop
+                Write-Host "[OK] Created $EnvFile from .env.example" -ForegroundColor Green
+            } catch {
+                Write-Error "[ERROR] Failed to initialize $EnvFile`: $_"
+                exit 1
+            }
         } else {
-            Write-Host "[INFO] .env file already exists." -ForegroundColor Yellow
+            Write-Host "[INFO] $EnvFile already exists." -ForegroundColor Yellow
         }
     }
     "up" {
         Write-Host "[INFO] Starting core infrastructure containers..." -ForegroundColor Cyan
-        docker compose -f $BaseCompose up -d
+        docker compose --env-file $EnvFile -f $BaseCompose up -d
+        exit $LASTEXITCODE
     }
     "down" {
         Write-Host "[INFO] Stopping infrastructure containers..." -ForegroundColor Cyan
-        docker compose -f $BaseCompose down
+        docker compose --env-file $EnvFile -f $BaseCompose down
+        exit $LASTEXITCODE
     }
     "restart" {
         Write-Host "[INFO] Restarting infrastructure containers..." -ForegroundColor Cyan
-        docker compose -f $BaseCompose down
-        docker compose -f $BaseCompose up -d
+        docker compose --env-file $EnvFile -f $BaseCompose down
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        docker compose --env-file $EnvFile -f $BaseCompose up -d
+        exit $LASTEXITCODE
     }
     "status" {
-        docker compose -f $BaseCompose ps
+        docker compose --env-file $EnvFile -f $BaseCompose ps
+        exit $LASTEXITCODE
     }
     "logs" {
-        docker compose -f $BaseCompose logs -f --tail=100
+        docker compose --env-file $EnvFile -f $BaseCompose logs -f --tail=100
+        exit $LASTEXITCODE
     }
     "clean" {
-        docker compose -f $BaseCompose down --remove-orphans
+        docker compose --env-file $EnvFile -f $BaseCompose down --remove-orphans
+        exit $LASTEXITCODE
     }
     Default {
         Show-Help
