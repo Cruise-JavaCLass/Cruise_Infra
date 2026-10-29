@@ -12,10 +12,10 @@ The infrastructure layer coordinates containerized services across both shipboar
 Cruise-infra/
 ├── compose/                    # Modular Docker Compose configurations
 │   ├── docker-compose.base.yml # Core data store: PostgreSQL Primary & Redis Cache
-│   ├── docker-compose.app.yml  # Application layer: Cruise-api, Cruise-web, Cruise-pos
-│   └── docker-compose.ha.yml   # High Availability: PostgreSQL Standby & HAProxy
+│   ├── docker-compose.app.yml  # (Planned) Application layer: Cruise-api, Cruise-web, Cruise-pos
+│   └── docker-compose.ha.yml   # (Planned) High Availability: PostgreSQL Standby & HAProxy
 ├── proxy/                      # Nginx Gateway & Reverse Proxy
-│   ├── nginx.conf              # Unified port 80/443 router & SSL termination
+│   ├── nginx.conf              # (Planned) Unified port 80/443 router & SSL termination
 │   └── conf.d/                 # Sub-domain and routing rules
 ├── db/                         # Database initialization, replication & backup
 │   ├── init/                   # Base DDL and bootstrap seed scripts
@@ -49,16 +49,16 @@ make init
 
 ### 2. Port Allocation Matrix
 
-| Service | Container Name | Host Port | Internal Port | Purpose |
+| Service | Container Name | Host Port | Internal Port | Status / Purpose |
 |---|---|---|---|---|
-| **PostgreSQL Primary** | `cruise-db-primary` | `5432` | `5432` | Core relational data store |
-| **Redis Cache** | `cruise-redis` | `6379` | `6379` | Distributed session & cache |
-| **Cruise Gateway / API** | `cruise-api` | `8080` | `8080` | Spring Boot API Gateway |
-| **Cruise Web** | `cruise-web` | `3000` | `80` | Passenger & Crew Web Portal |
-| **Cruise POS** | `cruise-pos` | `3001` | `80` | Mobile Point of Sale Terminal |
-| **Nginx Reverse Proxy** | `cruise-proxy` | `80, 443` | `80, 443` | SSL Gateway & Host Router |
-| **Grafana** | `cruise-grafana` | `3002` | `3000` | Observability & Metrics UI |
-| **Prometheus** | `cruise-prometheus` | `9090` | `9090` | Time-series Telemetry Scraper |
+| **PostgreSQL Primary** | `cruise-db-primary` | `127.0.0.1:5432` | `5432` | Core relational data store |
+| **Redis Cache** | `cruise-redis` | `127.0.0.1:6379` | `6379` | Distributed session & cache |
+| **Cruise Gateway / API** | `cruise-api` | `8080` | `8080` | *(Planned)* Spring Boot API Gateway |
+| **Cruise Web** | `cruise-web` | `3000` | `80` | *(Planned)* Passenger & Crew Web Portal |
+| **Cruise POS** | `cruise-pos` | `3001` | `80` | *(Planned)* Mobile Point of Sale Terminal |
+| **Nginx Reverse Proxy** | `cruise-proxy` | `80, 443` | `80, 443` | *(Planned)* SSL Gateway & Host Router |
+| **Grafana** | `cruise-grafana` | `3002` | `3000` | *(Planned)* Observability & Metrics UI |
+| **Prometheus** | `cruise-prometheus` | `9090` | `9090` | *(Planned)* Time-series Telemetry Scraper |
 
 ---
 
@@ -82,4 +82,5 @@ make down            # or: .\manage.ps1 down
 
 ## 🔐 Security & Compliance Note
 - **Secrets Isolation**: Never commit `.env` or production credentials to source control.
-- **PCI-DSS & Maritime Hardening**: Production containers run as non-root users (`uid 10001`) with read-only root filesystems where applicable.
+- **Port Binding**: By default, database and cache ports bind to `127.0.0.1` (loopback) to prevent unauthorized network exposure.
+- **PCI-DSS & Maritime Hardening**: Note that non-root execution (e.g. `uid 10001`) and read-only root filesystems are production deployment requirements, not controls enforced by default in the local base compose stack.
