@@ -1,0 +1,63 @@
+services:
+  # ----------------------------------------------------------------------------
+  # PostgreSQL Primary Database Engine
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:18-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-cruise-fleet}-db-primary
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cruise_db}
+      POSTGRES_USER: ${POSTGRES_USER:-cruise_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    ports:
+      - "${POSTGRES_HOST_BIND:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ../db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - cruise-network
+
+  # ----------------------------------------------------------------------------
+  # Redis In-Memory Cache & Distributed State Store
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-cruise-fleet}-redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      REDIS_MAXMEMORY: ${REDIS_MAXMEMORY:-256mb}
+      REDIS_MAXMEMORY_POLICY: ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
+    command: >
+      sh -c '
+        escaped_pw=$$(printf "%s" "$$REDIS_PASSWORD" | sed "s/\\\\/\\\\\\\\/g; s/\"/\\\\\"/g")
+        printf "requirepass \"%s\"\nmaxmemory %s\nmaxmemory-policy %s\nappendonly %s\n" "$$escaped_pw" "$${REDIS_MAXMEMORY:-256mb}" "$${REDIS_MAXMEMORY_POLICY:-allkeys-lru}" "yes" | exec redis-server -
+      '
+    ports:
+      - "${REDIS_HOST_BIND:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - cruise-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  cruise-network:
+    driver: bridge

@@ -1,0 +1,34 @@
+# Git & OS
+.DS_Store
+Thumbs.db
+*.swp
+*.bak
+*~
+
+# Environment variables & secrets (CRITICAL: NEVER COMMIT)
+.env
+.env.local
+.env.*
+*.env
+!*.env.example
+
+# Local runtime data & volumes
+data/
+volumes/
+logs/
+*.log
+
+# Docker & local compose overrides
+docker-compose.override.yml
+
+# TLS & Certs
+certs/*.key
+certs/*.crt
+certs/*.pem
+!certs/.gitkeep
+
+# Backups
+backups/*.sql
+backups/*.gz
+backups/*.tar
+!backups/.gitkeep
