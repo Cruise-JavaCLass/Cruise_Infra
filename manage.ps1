@@ -24,7 +24,7 @@ function Show-Help {
     Write-Host "==========================================================" -ForegroundColor Cyan
     Write-Host "Usage: .\manage.ps1 [command]`n"
     Write-Host "Commands:"
-    Write-Host "  init     - Copy .env.example to .env if not present"
+    Write-Host "  init     - Copy .env.example to .env and generate secure unique credentials"
     Write-Host "  up       - Start core infrastructure (PostgreSQL & Redis)"
     Write-Host "  down     - Stop running containers"
     Write-Host "  restart  - Restart infrastructure services"
@@ -38,8 +38,20 @@ switch ($Command) {
     "init" {
         if (-not (Test-Path $EnvFile)) {
             try {
-                Copy-Item ".env.example" $EnvFile -ErrorAction Stop
-                Write-Host "[OK] Created $EnvFile from .env.example" -ForegroundColor Green
+                $content = Get-Content ".env.example" -Raw
+                # Generate unique cryptographically strong passwords for placeholders
+                $pgPass = -join ((1..32) | ForEach-Object { [char]((65..90) + (97..122) + (48..57) | Get-Random) })
+                $redisPass = -join ((1..32) | ForEach-Object { [char]((65..90) + (97..122) + (48..57) | Get-Random) })
+                $replPass = -join ((1..32) | ForEach-Object { [char]((65..90) + (97..122) + (48..57) | Get-Random) })
+                $grafanaPass = -join ((1..32) | ForEach-Object { [char]((65..90) + (97..122) + (48..57) | Get-Random) })
+
+                $content = $content -replace 'POSTGRES_PASSWORD=cruise_secret_password_change_me', "POSTGRES_PASSWORD=$pgPass"
+                $content = $content -replace 'REDIS_PASSWORD=redis_secret_password_change_me', "REDIS_PASSWORD=$redisPass"
+                $content = $content -replace 'POSTGRES_REPL_PASSWORD=repl_secret_password_change_me', "POSTGRES_REPL_PASSWORD=$replPass"
+                $content = $content -replace 'GRAFANA_ADMIN_PASSWORD=grafana_admin_password_change_me', "GRAFANA_ADMIN_PASSWORD=$grafanaPass"
+
+                [System.IO.File]::WriteAllText((Join-Path (Get-Location) $EnvFile), $content, [System.Text.Encoding]::UTF8)
+                Write-Host "[OK] Created $EnvFile with auto-generated secure credentials." -ForegroundColor Green
             } catch {
                 Write-Error "[ERROR] Failed to initialize $EnvFile`: $_"
                 exit 1
@@ -49,6 +61,13 @@ switch ($Command) {
         }
     }
     "up" {
+        if (Test-Path $EnvFile) {
+            $rawEnv = Get-Content $EnvFile -Raw
+            if ($rawEnv -match 'POSTGRES_PASSWORD=.*change_me' -or $rawEnv -match 'REDIS_PASSWORD=.*change_me') {
+                Write-Error "[ERROR] Default placeholder passwords detected in $EnvFile. Please configure secure unique credentials or re-run '.\manage.ps1 init' before starting the stack."
+                exit 1
+            }
+        }
         Write-Host "[INFO] Starting core infrastructure containers..." -ForegroundColor Cyan
         docker compose --env-file $EnvFile -f $BaseCompose up -d
         exit $LASTEXITCODE
