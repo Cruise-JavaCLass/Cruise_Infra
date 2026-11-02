@@ -5,7 +5,7 @@
 
 COMPOSE := docker compose --env-file .env -f compose/docker-compose.base.yml
 
-.PHONY: help init up down restart status logs clean prune test-conn
+.PHONY: help init up down restart status logs clean prune test-conn check-env
 
 help: ## Show this help message
 	@echo "Cruise Management System - Infrastructure CLI"
@@ -21,31 +21,33 @@ init: ## Initialize environment from template (.env) with restricted permissions
 		REDIS_PASS=$$(openssl rand -hex 16 2>/dev/null || od -vN 16 -An -tx1 /dev/urandom | tr -d ' \n') && \
 		REPL_PASS=$$(openssl rand -hex 16 2>/dev/null || od -vN 16 -An -tx1 /dev/urandom | tr -d ' \n') && \
 		GRAF_PASS=$$(openssl rand -hex 16 2>/dev/null || od -vN 16 -An -tx1 /dev/urandom | tr -d ' \n') && \
-		sed -i "s/POSTGRES_PASSWORD=cruise_secret_password_change_me/POSTGRES_PASSWORD=$$PG_PASS/" .env 2>/dev/null || \
-		sed -i '' "s/POSTGRES_PASSWORD=cruise_secret_password_change_me/POSTGRES_PASSWORD=$$PG_PASS/" .env 2>/dev/null || true; \
-		sed -i "s/REDIS_PASSWORD=redis_secret_password_change_me/REDIS_PASSWORD=$$REDIS_PASS/" .env 2>/dev/null || \
-		sed -i '' "s/REDIS_PASSWORD=redis_secret_password_change_me/REDIS_PASSWORD=$$REDIS_PASS/" .env 2>/dev/null || true; \
-		sed -i "s/POSTGRES_REPL_PASSWORD=repl_secret_password_change_me/POSTGRES_REPL_PASSWORD=$$REPL_PASS/" .env 2>/dev/null || \
-		sed -i '' "s/POSTGRES_REPL_PASSWORD=repl_secret_password_change_me/POSTGRES_REPL_PASSWORD=$$REPL_PASS/" .env 2>/dev/null || true; \
-		sed -i "s/GRAFANA_ADMIN_PASSWORD=grafana_admin_password_change_me/GRAFANA_ADMIN_PASSWORD=$$GRAF_PASS/" .env 2>/dev/null || \
-		sed -i '' "s/GRAFANA_ADMIN_PASSWORD=grafana_admin_password_change_me/GRAFANA_ADMIN_PASSWORD=$$GRAF_PASS/" .env 2>/dev/null || true; \
+		(sed -i "s/POSTGRES_PASSWORD=cruise_secret_password_change_me/POSTGRES_PASSWORD=$$PG_PASS/" .env 2>/dev/null || \
+		 sed -i '' "s/POSTGRES_PASSWORD=cruise_secret_password_change_me/POSTGRES_PASSWORD=$$PG_PASS/" .env) && \
+		(sed -i "s/REDIS_PASSWORD=redis_secret_password_change_me/REDIS_PASSWORD=$$REDIS_PASS/" .env 2>/dev/null || \
+		 sed -i '' "s/REDIS_PASSWORD=redis_secret_password_change_me/REDIS_PASSWORD=$$REDIS_PASS/" .env) && \
+		(sed -i "s/POSTGRES_REPL_PASSWORD=repl_secret_password_change_me/POSTGRES_REPL_PASSWORD=$$REPL_PASS/" .env 2>/dev/null || \
+		 sed -i '' "s/POSTGRES_REPL_PASSWORD=repl_secret_password_change_me/POSTGRES_REPL_PASSWORD=$$REPL_PASS/" .env) && \
+		(sed -i "s/GRAFANA_ADMIN_PASSWORD=grafana_admin_password_change_me/GRAFANA_ADMIN_PASSWORD=$$GRAF_PASS/" .env 2>/dev/null || \
+		 sed -i '' "s/GRAFANA_ADMIN_PASSWORD=grafana_admin_password_change_me/GRAFANA_ADMIN_PASSWORD=$$GRAF_PASS/" .env) && \
 		echo "Created .env with mode 0600 and generated secure unique credentials."; \
 	else \
 		echo ".env already exists."; \
 	fi
 	@echo "Infrastructure skeleton ready."
 
-up: ## Start core infrastructure services (Database & Cache)
+check-env: ## Verify that placeholder passwords are not being used in .env
 	@if [ -f .env ] && grep -E 'POSTGRES_PASSWORD=.*change_me|REDIS_PASSWORD=.*change_me' .env >/dev/null 2>&1; then \
 		echo "[ERROR] Default placeholder passwords detected in .env. Please configure secure unique credentials or re-run 'make init' before starting the stack." >&2; \
 		exit 1; \
 	fi
+
+up: check-env ## Start core infrastructure services (Database & Cache)
 	$(COMPOSE) up -d
 
 down: ## Stop all active infrastructure containers
 	$(COMPOSE) down
 
-restart: ## Restart all infrastructure containers
+restart: check-env ## Restart all infrastructure containers
 	$(COMPOSE) down
 	$(COMPOSE) up -d
 

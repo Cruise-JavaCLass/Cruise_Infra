@@ -34,24 +34,76 @@ function Show-Help {
     Write-Host "  help     - Show this help message"
 }
 
+function New-CryptographicPassword([int]$length = 32) {
+    $chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    $bytes = [byte[]]::new($length)
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $rng.GetBytes($bytes)
+    } finally {
+        $rng.Dispose()
+    }
+    $pass = [char[]]::new($length)
+    for ($i = 0; $i -lt $length; $i++) {
+        $pass[$i] = $chars[$bytes[$i] % $chars.Length]
+    }
+    return [string]::new($pass)
+}
+
+function Assert-NoPlaceholderPasswords {
+    if (Test-Path $EnvFile) {
+        $rawEnv = Get-Content $EnvFile -Raw
+        if ($rawEnv -match 'POSTGRES_PASSWORD=.*change_me' -or $rawEnv -match 'REDIS_PASSWORD=.*change_me') {
+            Write-Error "[ERROR] Default placeholder passwords detected in $EnvFile. Please configure secure unique credentials or re-run '.\manage.ps1 init' before starting the stack."
+            exit 1
+        }
+    }
+}
+
+function Set-RestrictedFilePermissions([string]$filePath) {
+    if ($PSVersionTable.Platform -eq "Unix") {
+        try {
+            & chmod 600 $filePath 2>$null
+        } catch {
+            Write-Warning "Could not apply chmod 600 to $filePath`: $_"
+        }
+    } else {
+        try {
+            $acl = Get-Acl -Path $filePath
+            $acl.SetAccessRuleProtection($true, $false)
+            $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($currentUser, "FullControl", "Allow")
+            $acl.AddAccessRule($rule)
+            Set-Acl -Path $filePath -AclObject $acl
+        } catch {
+            Write-Warning "Could not apply restricted Windows ACL on $filePath`: $_"
+        }
+    }
+}
+
 switch ($Command) {
     "init" {
         if (-not (Test-Path $EnvFile)) {
             try {
+                $fullPath = Join-Path (Get-Location) $EnvFile
+                # Create empty file and establish restrictive access before writing sensitive content
+                [System.IO.File]::WriteAllText($fullPath, "")
+                Set-RestrictedFilePermissions $fullPath
+
                 $content = Get-Content ".env.example" -Raw
-                # Generate unique cryptographically strong passwords for placeholders
-                $pgPass = -join ((1..32) | ForEach-Object { [char]((65..90) + (97..122) + (48..57) | Get-Random) })
-                $redisPass = -join ((1..32) | ForEach-Object { [char]((65..90) + (97..122) + (48..57) | Get-Random) })
-                $replPass = -join ((1..32) | ForEach-Object { [char]((65..90) + (97..122) + (48..57) | Get-Random) })
-                $grafanaPass = -join ((1..32) | ForEach-Object { [char]((65..90) + (97..122) + (48..57) | Get-Random) })
+                # Generate unique cryptographically strong passwords
+                $pgPass = New-CryptographicPassword 32
+                $redisPass = New-CryptographicPassword 32
+                $replPass = New-CryptographicPassword 32
+                $grafanaPass = New-CryptographicPassword 32
 
                 $content = $content -replace 'POSTGRES_PASSWORD=cruise_secret_password_change_me', "POSTGRES_PASSWORD=$pgPass"
                 $content = $content -replace 'REDIS_PASSWORD=redis_secret_password_change_me', "REDIS_PASSWORD=$redisPass"
                 $content = $content -replace 'POSTGRES_REPL_PASSWORD=repl_secret_password_change_me', "POSTGRES_REPL_PASSWORD=$replPass"
                 $content = $content -replace 'GRAFANA_ADMIN_PASSWORD=grafana_admin_password_change_me', "GRAFANA_ADMIN_PASSWORD=$grafanaPass"
 
-                [System.IO.File]::WriteAllText((Join-Path (Get-Location) $EnvFile), $content, [System.Text.Encoding]::UTF8)
-                Write-Host "[OK] Created $EnvFile with auto-generated secure credentials." -ForegroundColor Green
+                [System.IO.File]::WriteAllText($fullPath, $content, [System.Text.Encoding]::UTF8)
+                Write-Host "[OK] Created $EnvFile with restricted permissions and cryptographically secure credentials." -ForegroundColor Green
             } catch {
                 Write-Error "[ERROR] Failed to initialize $EnvFile`: $_"
                 exit 1
@@ -61,13 +113,7 @@ switch ($Command) {
         }
     }
     "up" {
-        if (Test-Path $EnvFile) {
-            $rawEnv = Get-Content $EnvFile -Raw
-            if ($rawEnv -match 'POSTGRES_PASSWORD=.*change_me' -or $rawEnv -match 'REDIS_PASSWORD=.*change_me') {
-                Write-Error "[ERROR] Default placeholder passwords detected in $EnvFile. Please configure secure unique credentials or re-run '.\manage.ps1 init' before starting the stack."
-                exit 1
-            }
-        }
+        Assert-NoPlaceholderPasswords
         Write-Host "[INFO] Starting core infrastructure containers..." -ForegroundColor Cyan
         docker compose --env-file $EnvFile -f $BaseCompose up -d
         exit $LASTEXITCODE
@@ -78,6 +124,7 @@ switch ($Command) {
         exit $LASTEXITCODE
     }
     "restart" {
+        Assert-NoPlaceholderPasswords
         Write-Host "[INFO] Restarting infrastructure containers..." -ForegroundColor Cyan
         docker compose --env-file $EnvFile -f $BaseCompose down
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
